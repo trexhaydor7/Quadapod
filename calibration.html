@@ -1,0 +1,73 @@
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
+
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+
+
+// Typical min and max pulse lengths. Adjust if needed.
+#define SERVO_MIN  150
+#define SERVO_MAX  600
+
+
+int selectedPin = 0;
+int currentAngle = 90;
+
+
+void setup() {
+  Serial.begin(115200);
+  pwm.begin();
+  pwm.setPWMFreq(50); // 50 Hz for analog servos
+  delay(10);
+
+  Serial.println("Servo Calibration Ready.");
+  Serial.println("Commands:");
+  Serial.println("  p <pin>     : Select servo channel (0-15)");
+  Serial.println("  a <angle>   : Move to angle (0-180)");
+  Serial.println("  + / -       : Increase or decrease angle by 5");
+}
+
+
+int angleToPWM(int angle) {
+  angle = constrain(angle, 0, 180);
+  return map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
+}
+
+
+void loop() {
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+
+
+    if (input.startsWith("p ")) {
+      selectedPin = input.substring(2).toInt();
+      Serial.print("Selected pin: ");
+      Serial.println(selectedPin);
+    }
+    else if (input.startsWith("a ")) {
+      currentAngle = input.substring(2).toInt();
+      currentAngle = constrain(currentAngle, 0, 180);
+      pwm.setPWM(selectedPin, 0, angleToPWM(currentAngle));
+      Serial.print("Moved to angle: ");
+      Serial.println(currentAngle);
+    }
+    else if (input == "+") {
+      currentAngle += 5;
+      currentAngle = constrain(currentAngle, 0, 180);
+      pwm.setPWM(selectedPin, 0, angleToPWM(currentAngle));
+      Serial.print("Angle increased to: ");
+      Serial.println(currentAngle);
+    }
+    else if (input == "-") {
+      currentAngle -= 5;
+      currentAngle = constrain(currentAngle, 0, 180);
+      pwm.setPWM(selectedPin, 0, angleToPWM(currentAngle));
+      Serial.print("Angle decreased to: ");
+      Serial.println(currentAngle);
+    }
+    else {
+      Serial.println("Unknown command.");
+    }
+  }
+}
