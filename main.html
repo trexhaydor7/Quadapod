@@ -1,508 +1,401 @@
-#include <Wire.h>
+// Load Wi-Fi library
+#include <WiFi.h>
 #include <Adafruit_PWMServoDriver.h>
 
+// Replace with your network credentials
+const char* ssid     = "Quadruped Control";
+const char* password = "Group2IBEST2025";
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 #define SERVO_MIN  130
 #define SERVO_MAX  620
 
+// Set web server port number to 80
+WiFiServer server(80);
+
+// Variable to store the HTTP request
+String header;
 
 int angleToPWM(int angle) {
   angle = constrain(angle, 0, 180);
   return map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
 }
 
-
 //Front right
-const int basePosFRF = 100;   //This is the base position pointing outwards
-const int basePosFRT = 90;
-//Front left
-const int basePosFLF = 40; //This is the base position pointing outwards
-const int basePosFLT = 90;
-//back right
-const int basePosBRF = 40; //This is the base position pointing outwards
-const int basePosBRT = 90;
-//back left
-const int basePosBLF = 100;  //This is the base position pointing outwards
-const int basePosBLT = 90;
+constexpr int basePosFRF = 100;   //This is the base position pointing outwards
+constexpr int basePosFRT = 0;
+constexpr int basePosBLF = 100;  //This is the base position pointing outwards
+constexpr int basePosBLT = 0;
+constexpr int basePosBRF = 40; //This is the base position pointing outwards
+constexpr int basePosBRT = 0;
+constexpr int basePosFLF = 40; //This is the base position pointing outwards
+constexpr int basePosFLT = 0;
 
 
-const int FRF = 1;
-const int FRT = 0;
-const int FLF = 2;
-const int FLT = 3;
-const int BRF = 6;
-const int BRT = 7;
-const int BLF = 5;
-const int BLT = 4;
 
+constexpr int FRT = 0;
+constexpr int FRF = 1;
+constexpr int FLF = 2;
+constexpr int FLT = 3;
+constexpr int BLT = 4;
+constexpr int BLF = 5;
+constexpr int BRF = 6;
+constexpr int BRT = 7;
 
 //delay time
-const int delayTime = 500;
+constexpr int delayTime = 100;
 
-
-
-
-
-
-//distance to raise the tibula
-const int raiseHeight = angleToPWM(27); //height for moving leg
-const int glideRaise = angleToPWM(10);//height for moving body and leg not
+constexpr int raiseHeight = 60; 
+constexpr int glideRaise = 15;
 
 
 //movement distance
-const int move = angleToPWM(47);
+constexpr int move = 30;
 
+int degrees[] = {
+  angleToPWM(basePosFRT), angleToPWM(basePosFRF), angleToPWM(basePosFLT),
+  angleToPWM(basePosFLF), angleToPWM(basePosBRT), angleToPWM(basePosBRF),
+  angleToPWM(basePosBLT), angleToPWM(basePosBLF), 
+  
+  //Raise Heights start at index 8
+  angleToPWM(basePosFRT + raiseHeight), angleToPWM(basePosFLT + raiseHeight), angleToPWM(basePosBRT + raiseHeight),
+  angleToPWM(basePosBLT + raiseHeight),
+  //Glide Raise for tibia start at index 12
+  angleToPWM(basePosFRT + glideRaise), angleToPWM(basePosFLT + glideRaise), angleToPWM(basePosBRT + glideRaise),
+  angleToPWM(basePosBLT + glideRaise),
+
+  //Femur Movements start at index 16
+  angleToPWM(basePosFRF + move), angleToPWM(basePosFRF - move), angleToPWM(basePosFLF + move),
+  angleToPWM(basePosFLF - move), angleToPWM(basePosBRF + move), angleToPWM(basePosBRF - move),
+  angleToPWM(basePosBLF + move), angleToPWM(basePosBLF - move)
+  };
 
 void setup() {
   Serial.begin(115200);
+
+  // Connect to Wi-Fi network with SSID and password
+  Serial.print("Setting AP (Access Point)…");
+  // Remove the password parameter, if you want the AP (Access Point) to be open
+  WiFi.softAP(ssid, password);
+
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
   pwm.begin();
   pwm.setPWMFreq(50);
-  delay(100);
+  
+  server.begin();
+}
+
+inline void baseState()
+{
+  pwm.setPWM(FRT, 0, degrees[0]);
+  pwm.setPWM(FRF, 0, degrees[1]);
+  pwm.setPWM(FLT, 0, degrees[2]);
+  pwm.setPWM(FLF, 0, degrees[3]);
+  pwm.setPWM(BRT, 0, degrees[4]);
+  pwm.setPWM(BRF, 0, degrees[5]);
+  pwm.setPWM(BLT, 0, degrees[6]);
+  pwm.setPWM(BLF, 0, degrees[7]);
+  delay(delayTime);
+}
+
+void Fsequence1()   //Front Right and Back Left Motor move forward
+{
+    pwm.setPWM(FRT, 0, degrees[8]);  //Move Front Left Leg
+    delay(delayTime);
+    pwm.setPWM(FRF, 0, degrees[16]);
+    delay(delayTime);
+    pwm.setPWM(FRT, 0, degrees[0]);
+    delay(delayTime);
+
+    pwm.setPWM(BLT, 0, degrees[11]); // Move Back Right Leg
+    delay(delayTime);
+    pwm.setPWM(BLF, 0, degrees[23]);
+    delay(delayTime);
+    pwm.setPWM(BLT, 0, degrees[6]);
+    delay(delayTime);
+
+
+    pwm.setPWM(BRT, 0, degrees[14]);  //Pick up the other two legs slightly
+    pwm.setPWM(FLT, 0, degrees[13]);
+    delay(delayTime);
+
+    pwm.setPWM(BLF, 0, degrees[7]);  //Move the femurs to base position
+    pwm.setPWM(FRF, 0, degrees[1]);
+
+    pwm.setPWM(BRT, 0, degrees[4]); //Put the tibias back down of the other two legs 
+    pwm.setPWM(FLT, 0, degrees[2]);
+    delay(delayTime);
+}
+
+void Fsequence2() //Front Left and Back Right Motor move forward
+{
+    pwm.setPWM(FLT, 0, degrees[9]);  //Move Front Left Leg
+    delay(delayTime);
+    pwm.setPWM(FLF, 0, degrees[19]);
+    delay(delayTime);
+    pwm.setPWM(FLT, 0, degrees[2]);
+    delay(delayTime);
+
+    pwm.setPWM(BRT, 0, degrees[10]); // Move Back Right Leg
+    delay(delayTime);
+    pwm.setPWM(BRF, 0, degrees[20]);
+    delay(delayTime);
+    pwm.setPWM(BRT, 0, degrees[4]);
+    delay(delayTime);
+
+
+    pwm.setPWM(BLT, 0, degrees[15]);  //Pick up the other two legs slightly
+    pwm.setPWM(FRT, 0, degrees[12]);
+    delay(delayTime);
+
+    pwm.setPWM(BRF, 0, degrees[5]); //Move the femurs to base position
+    pwm.setPWM(FLF, 0, degrees[3]);
+
+    pwm.setPWM(BLT, 0, degrees[6]); //Put the tibias back down of the other two legs 
+    pwm.setPWM(FRT, 0, degrees[0]);
+    delay(delayTime);
+}
+
+void forward()  //Move the front right and back left legs forward first, then the front left and back right legs 
+{
+  Fsequence1();
+  Fsequence2();
+}
+
+void Bsequence1()   //Front Right and Back Left Motor move forward
+{
+    pwm.setPWM(FRT, 0, degrees[8]);  //Move Front Left Leg
+    delay(delayTime);
+    pwm.setPWM(FRF, 0, degrees[17]);
+    delay(delayTime);
+    pwm.setPWM(FRT, 0, degrees[0]);
+    delay(delayTime);
+
+    pwm.setPWM(BLT, 0, degrees[11]); // Move Back Right Leg
+    delay(delayTime);
+    pwm.setPWM(BLF, 0, degrees[22]);
+    delay(delayTime);
+    pwm.setPWM(BLT, 0, degrees[6]);
+    delay(delayTime);
+
+
+    pwm.setPWM(BRT, 0, degrees[14]);  //Pick up the other two legs slightly
+    pwm.setPWM(FLT, 0, degrees[13]);
+    delay(delayTime);
+
+    pwm.setPWM(BLF, 0, degrees[7]);  //Move the femurs to base position
+    pwm.setPWM(FRF, 0, degrees[1]);
+
+    pwm.setPWM(BRT, 0, degrees[4]); //Put the tibias back down of the other two legs 
+    pwm.setPWM(FLT, 0, degrees[2]);
+    delay(delayTime);
+}
+
+void Bsequence2() //Front Left and Back Right Motor move forward
+{
+    pwm.setPWM(FLT, 0, degrees[9]);  //Move Front Left Leg
+    delay(delayTime);
+    pwm.setPWM(FLF, 0, degrees[18]);
+    delay(delayTime);
+    pwm.setPWM(FLT, 0, degrees[2]);
+    delay(delayTime);
+
+    pwm.setPWM(BRT, 0, degrees[10]); // Move Back Right Leg
+    delay(delayTime);
+    pwm.setPWM(BRF, 0, degrees[21]);
+    delay(delayTime);
+    pwm.setPWM(BRT, 0, degrees[4]);
+    delay(delayTime);
+
+
+    pwm.setPWM(BLT, 0, degrees[15]);  //Pick up the other two legs slightly
+    pwm.setPWM(FRT, 0, degrees[12]);
+    delay(delayTime);
+
+    pwm.setPWM(BRF, 0, degrees[5]); //Move the femurs to base position
+    pwm.setPWM(FLF, 0, degrees[3]);
+
+    pwm.setPWM(BLT, 0, degrees[6]); //Put the tibias back down of the other two legs 
+    pwm.setPWM(FRT, 0, degrees[0]);
+    delay(delayTime);
+}
+
+void backward()  //Move the front right and back left legs forward first, then the front left and back right legs 
+{
+  Bsequence1();
+  Bsequence2();
+}
+
+void FrightSide() //Helper method to turn all femurs on the right forward
+{
+    //Move Front Right Leg first
+    pwm.setPWM(FRT, 0, degrees[8]); //Raise Front Right tibia 
+    delay(delayTime);
+    pwm.setPWM(FRF, 0, degrees[17]); //Move Front Right Femur forward
+    delay(delayTime);
+    pwm.setPWM(FRT, 0, degrees[0]); //Lower Front Right Tibia
+    delay(delayTime);
+
+    //Then move Back Right Leg
+    pwm.setPWM(BRT, 0, degrees[10]); //Raise Back Right tibia 
+    delay(delayTime);
+    pwm.setPWM(BRF, 0, degrees[21]); //Move Back Right Femur forward
+    delay(delayTime);
+    pwm.setPWM(BRT, 0, degrees[4]); //Lower Back Right Tibia
+    delay(delayTime);
+}
+
+void FleftSide() //Helper method to turn all femurs on the left forward
+{
+    //Move Front Left Leg first
+    pwm.setPWM(FLT, 0, degrees[9]); //Raise Front Left tibia 
+    delay(delayTime);
+    pwm.setPWM(FLF, 0, degrees[18]); //Move Front Left Femur forward
+    delay(delayTime);
+    pwm.setPWM(FLT, 0, degrees[2]); //Lower Front Left Tibia
+    delay(delayTime);
+
+    //Then move Back Left Leg
+    pwm.setPWM(BLT, 0, degrees[11]); //Raise Back Left tibia 
+    delay(delayTime);
+    pwm.setPWM(BLF, 0, degrees[22]); //Move Back Left Femur forward
+    delay(delayTime);
+    pwm.setPWM(BLT, 0, degrees[6]); //Lower Back Left Tibia
+    delay(delayTime);
+}
+
+void BrightSide() //Helper method to turn all femurs on the right backward
+{
+    //Move Front Right Leg first
+    pwm.setPWM(FRT, 0, degrees[8]); //Raise Front Right tibia 
+    delay(delayTime);
+    pwm.setPWM(FRF, 0, degrees[16]); //Move Front Right Femur backward
+    delay(delayTime);
+    pwm.setPWM(FRT, 0, degrees[0]); //Lower Front Right Tibia
+    delay(delayTime);
+
+    //Then move Back Right Leg
+    pwm.setPWM(BRT, 0, degrees[10]); //Raise Back Right tibia 
+    delay(delayTime);
+    pwm.setPWM(BRF, 0, degrees[20]); //Move Back Right Femur backward
+    delay(delayTime);
+    pwm.setPWM(BRT, 0, degrees[4]); //Lower Back Right Tibia
+    delay(delayTime);
+}
+void BleftSide() //Helper method to turn all femurs on the left backward
+{
+    //Move Front Left Leg first
+    pwm.setPWM(FLT, 0, degrees[9]); //Raise Front Left tibia 
+    delay(delayTime);
+    pwm.setPWM(FLF, 0, degrees[19]); //Move Front Left Femur backward
+    delay(delayTime);
+    pwm.setPWM(FLT, 0, degrees[2]); //Lower Front Left Tibia
+    delay(delayTime);
+
+    //Then move Back Left Leg
+    pwm.setPWM(BLT, 0, degrees[11]); //Raise Back Left tibia 
+    delay(delayTime);
+    pwm.setPWM(BLF, 0, degrees[23]); //Move Back Left Femur backward
+    delay(delayTime);
+    pwm.setPWM(BLT, 0, degrees[6]); //Lower Back Left Tibia
+    delay(delayTime);
+}
+
+void right()
+{
+  FrightSide(); 
+  BleftSide();
+  baseState();
+}
+
+void left()
+{
+  FleftSide(); 
+  BrightSide();
+  baseState();
 }
 
 
 
-void baseState()
+void Lsequence1()   //Front Right and Back Left Motor move forward
 {
-
-  pwm.setPWM(1,0, angleToPWM(basePosFRF));
-  pwm.setPWM(2,0, angleToPWM(basePosFLF));
-  pwm.setPWM(5,0, angleToPWM(basePosBLF));
-  pwm.setPWM(6,0, angleToPWM(basePosBRF));
-  delay(delayTime);
+    pwm.setPWM(FRT, 0, angleToPWM(basePosFRT + raiseHeight));  //Move Front Left Leg
+    delay(delayTime);
+    pwm.setPWM(FRF, 0, angleToPWM(basePosFRF + move));
+    delay(delayTime);
+    pwm.setPWM(FRT, 0, angleToPWM(basePosFRT));
+    delay(delayTime);
 }
 
-
-void forward()
-{
-  forwardR();
-  forwardL();
-}
-
-
-void forwardR()
-{
-  baseState();//make sure all reset
-  //move legs
-  forwardFR();
-  forwardBL();
-  //glide other legs
-  glideFL();
-  glideBR();
-  //return moved legs to base state
-  baseFR();
-  baseBL();
-  //drop gliding legs
-  baseFL();
-  baseBR();
-}
-void forwardL()
-{
-  baseState();//make sure all reset
-  //move legs
-  forwardFL();
-  forwardBR();
-  //glide other legs
-  glideFR();
-  glideBL();
-  //return moved legs to base state
-  baseFL();
-  baseBR();
-  //drop gliding legs
-  baseFR();
-  baseBL();
-}
-
-
-
-
-
-
-
-
-//Backward________________________________________________________
-void backward()
-{
-  backwardR();
-  backwardL();
-}
-
-
-
-
-
-
-
-
-void backwardR()
-{
-  baseState();//make sure all reset
-  //move legs
-  backwardFR();
-  backwardBL();
-  //glide other legs
-  glideFL();
-  glideBR();
-  //return moved legs to base state
-  baseFR();
-  baseBL();
-  //drop gliding legs
-  baseFL();
-  baseBR();
-}
-void backwardL()
-{
-  baseState();//make sure all reset
-  //move legs
-  backwardFL();
-  backwardBR();
-  //glide other legs
-  glideFR();
-  glideBL();
-  //return moved legs to base state
-  baseFL();
-  baseBR();
-  //drop gliding legs
-  baseFR();
-  baseBL();
-}
-
-
-
-
-
-
-
-
-//turn right______________________________________________________
-void turnRight()
-{
-  turnRightUp();
-  turnRightDown();
-}
-
-
-
-
-
-
-
-
-void turnRightUp()
-{
-  baseState();//make sure all reset
-  //move first two
-  backwardFR();
-  forwardBL();
-  //glide other two
-  glideFL();
-  glideBR();
-  //return first two to base
-  baseFR();
-  baseBL();
-  //drop glidding legs
-  baseFL();
-  baseBR();
-}
-
-
-
-
-
-
-
-
-void turnRightDown()
-{
-  baseState();//make sure all reset
-  //move first two
-  backwardFL();
-  forwardBR();
-  //glide other two
-  glideFR();
-  glideBL();
-  //return first two to base
-  baseFL();
-  baseBR();
-  //drop gliding legs
-  baseFR();
-  baseBL();
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//turn left_______________________________________________________
-void turnLeft()
-{
-  turnLeftUp();
-  turnLeftDown();
-}
-
-
-
-
-
-
-
-
-void turnLeftUp()
-{
-  baseState();//make sure all reset
-  //move first two
-  forwardFR();
-  backwardBL();
-  //glide other two
-  glideFL();
-  glideBR();
-  //return first two to base
-  baseFR();
-  baseBL();
-  //drop gliding legs
-  baseFL();
-  baseBR();
-}
-
-
-
-
-
-
-
-
-void turnLeftDown()
-{
-  baseState();//make sure all reset
-  //move first two
-  forwardFL();
-  backwardBR();
-  //glide other two
-  glideFR();
-  glideBL();
-  //return first two to base
-  baseFL();
-  baseBR();
-  //drop gliding legs
-  baseFR();
-  baseBL();
-}
-
-
-
-
-
-
-
-
-//MOVEMENTS_______________________________________________________
-//front right
-void forwardFR()
-{
-  pwm.setPWM(FRT, 0, angleToPWM(basePosFRT + raiseHeight));
-  delay(delayTime);
-  pwm.setPWM(FRF, 0, angleToPWM(basePosFRF + move));
-  delay(delayTime);
-  pwm.setPWM(FRT, 0, angleToPWM(basePosFRT));
-  delay(delayTime);
-  Serial.println("Executing forwardFR()");
-}
-void backwardFR()
-{
-  pwm.setPWM(FRT, 0, angleToPWM(basePosFRT + raiseHeight));
-  delay(delayTime);
-  pwm.setPWM(FRF, 0, angleToPWM(basePosFRF - move));
-  delay(delayTime);
-  pwm.setPWM(FRT, 0, angleToPWM(basePosFRT));
-  delay(delayTime);
-Serial.println("Executing backwardFR()");
-}
-void baseFR()
-{
-  pwm.setPWM(FRT, 0, angleToPWM(basePosFRT));
-  delay(delayTime);
-  pwm.setPWM(FRF, 0, angleToPWM(basePosFRF));
-  delay(delayTime);
-Serial.println("Executing baseFR()");
-}
-void glideFR()
-{
-  pwm.setPWM(FRT, 0, angleToPWM(basePosFRT + glideRaise));
-  delay(delayTime);
-Serial.println("Executing glideFR()");
-}
-//front left
-void forwardFL()
-{
-  pwm.setPWM(FLT, 0, angleToPWM(basePosFLT + raiseHeight));
-  delay(delayTime);
-  pwm.setPWM(FLF, 0, angleToPWM(basePosFLF - move));
-  delay(delayTime);
-  pwm.setPWM(FLT, 0, angleToPWM(basePosFLT));
-  delay(delayTime);
-Serial.println("Executing forwardFL()");
-}
-void backwardFL()
-{
-  pwm.setPWM(FLT, 0, angleToPWM(basePosFLT + raiseHeight));
-  delay(delayTime);
-  pwm.setPWM(FLF, 0, angleToPWM(basePosFLF + move));
-  delay(delayTime);
-  pwm.setPWM(FLT, 0, angleToPWM(basePosFLT));
-  delay(delayTime);
-Serial.println("Executing backwardFL()");
-}
-void baseFL()
-{
-  pwm.setPWM(FLT, 0, angleToPWM(basePosFLT));
-  delay(delayTime);
-  pwm.setPWM(FLF, 0, angleToPWM(basePosFLF));
-  delay(delayTime);
-Serial.println("Executing baseFL()");
-}
-void glideFL()
-{
-  pwm.setPWM(FLT, 0, angleToPWM(basePosFLT + glideRaise));
-  delay(delayTime);
-Serial.println("Executing glideFL()");
-}
-//back right
-void forwardBR()
-{
-  pwm.setPWM(BRT, 0, angleToPWM(basePosBRT + raiseHeight));
-  delay(delayTime);
-  pwm.setPWM(BRF, 0, angleToPWM(basePosBRF + move));
-  delay(delayTime);
-  pwm.setPWM(BRT, 0, angleToPWM(basePosBRT));
-  delay(delayTime);
-Serial.println("Executing forwardBR()");
-}
-void backwardBR()
-{
-  pwm.setPWM(BRT, 0, angleToPWM(basePosBRT + raiseHeight));
-  delay(delayTime);
-  pwm.setPWM(BRF, 0, angleToPWM(basePosBRF - move));
-  delay(delayTime);
-  pwm.setPWM(BRT, 0, angleToPWM(basePosBRT));
-  delay(delayTime);
-Serial.println("Executing backwardBR()");
-}
-void baseBR()
-{
-  pwm.setPWM(BRT, 0, angleToPWM(basePosBRT));
-  delay(delayTime);
-  pwm.setPWM(BRF, 0, angleToPWM(basePosBRF));
-  delay(delayTime);
-Serial.println("Executing baseBR()");
-}
-void glideBR()
-{
-  pwm.setPWM(BRT, 0, angleToPWM(basePosBRT + glideRaise));
-  delay(delayTime);
-Serial.println("Executing glideBR()");
-}
-//back left
-void forwardBL()
-{
-  pwm.setPWM(BLT, 0, angleToPWM(basePosBLT + raiseHeight));
-  delay(delayTime);
-  pwm.setPWM(BLF, 0, angleToPWM(basePosBLF - move));
-  delay(delayTime);
-  pwm.setPWM(BLT, 0, angleToPWM(basePosBLT));
-  delay(delayTime);
-Serial.println("Executing forwardBL()");
-}
-
-
-
-
-void backwardBL()
-{
-  pwm.setPWM(BLT, 0, angleToPWM(basePosBLT + raiseHeight));
-  delay(delayTime);
-  pwm.setPWM(BLF, 0, angleToPWM(basePosBLF + move));
-  delay(delayTime);
-  pwm.setPWM(BLT, 0, angleToPWM(basePosBLT));
-  delay(delayTime);
-Serial.println("Executing backwardBL()");
-}
-
-
-
-
-void baseBL()
-{
-  pwm.setPWM(BLT, 0, angleToPWM(basePosBLT));
-  delay(delayTime);
-  pwm.setPWM(BLF, 0, angleToPWM(basePosBLF));
-  delay(delayTime);
-Serial.println("Executing baseBL()");
-}
-
-
-
-
-void glideBL()
-{
-  pwm.setPWM(BLT, 0, angleToPWM(basePosBLT + glideRaise));
-  delay(delayTime);
-Serial.println("Executing glideBL()");
-}
-
-
-
-
-void loop()
-{
-  if (Serial.available() > 0)
-  {
-    char cmd = Serial.read();
-    if (cmd == 'w') forward();
-    if (cmd == 's') backward();
-    if (cmd == 'a') turnLeft();
-    if (cmd == 'd') turnRight();
-    if (cmd == 'z') baseState();
-    //test actual individual legs
-    if (cmd == '1') forwardFR();
-    if (cmd == '2') forwardFL();
-    if (cmd == '3') forwardBR();
-    if (cmd == '4') forwardBL();
-
-
-
-
-    if (cmd == '5') backwardFR();
-    if (cmd == '6') backwardFL();
-    if (cmd == '7') backwardBR();
-    if (cmd == '8') backwardBL();
-
-
-
-
-    if (cmd == 'e') baseFR();
-    if (cmd == 'r') baseFL();
-    if (cmd == 't') baseBR();
-    if (cmd == 'y') baseBL();
-
-
-
-
-    if (cmd == 'u') glideFR();
-    if (cmd == 'i') glideFL();
-    if (cmd == 'o') glideBR();
-    if (cmd == 'p') glideBL();
+void loop(){
+  WiFiClient client = server.available();  
+
+  if (client) {                          
+    Serial.println("New Client.");         
+    String currentLine = "";                
+    while (client.connected()) {            
+      if (client.available()) {            
+        char c = client.read();             
+        Serial.write(c);                    
+        header += c;
+        if (c == '\n') {                    
+          if (currentLine.length() == 0) {
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html");
+            client.println("Connection: close");
+            client.println();
+            
+            // turns the GPIOs on and off
+            if (header.indexOf("GET /forward") >= 0) {
+              Serial.println("Moving Forward");
+              forward();
+            } else if (header.indexOf("GET /backward") >= 0) {
+              Serial.println("Moving Backward");
+              backward();
+            } else if (header.indexOf("GET /left") >= 0) {
+              Serial.println("Turning Left");
+              left();
+            } else if (header.indexOf("GET /right/") >= 0) {
+              Serial.println("Turning Right");
+              right();
+            }
+        
+            client.println("<!DOCTYPE html><html>");
+            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            client.println("<link rel=\"icon\" href=\"data:,\">");
+
+            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
+            client.println(".button { background-color: #CF2144; border: none; color: white; padding: 15px 32px; text-align: center; text-decoration:none; display: inline-block; font-size: 16px; margin: 4px 2px;");
+            client.println("text-decoration: none; font-size: 30px; margin: 2px;}");
+            client.println("</style></head>");
+
+            client.println("<body><h1>Quadruped Control</h1>");
+            client.println("<body><h2>By Hayden, Justin, Ananya, and Lauren</h2>");
+            client.println("<div></div><div><a href='/forward' class='button'><button>Forward</button></a></div><div></div>");
+            client.println("<div><a href='/left' class='button'><button>Left</button></a></div>");
+            client.println("<div><a href='/right/' class='button'><button>Right</button></a></div>");
+            client.println("<div></div><div><a href='/backward' class='button'><button>Backward</button></a></div><div></div>");
+            client.println("</body></html>");
+
+            client.println();
+           
+            break;
+          } else { 
+            currentLine = "";
+          }
+        } else if (c != '\r') {  
+          currentLine += c;      
+        }
+      }
+    }
+
+    header = "";
+
+    client.stop();
+    Serial.println("Client disconnected.");
+    Serial.println("");
   }
 }
